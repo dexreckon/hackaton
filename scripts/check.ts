@@ -52,6 +52,7 @@ ok('fallback says "not covered" for unrelated questions', /not covered/i.test(a3
 
 async function llmChecks() {
 // LLM client: retry on 429 then succeed, and fall back to the second provider
+delete process.env.GEMINI_API_KEY;
 process.env.GROQ_API_KEY = 'x'; process.env.OPENROUTER_API_KEY = 'y';
 const realFetch = globalThis.fetch;
 let calls: string[] = [];
@@ -66,6 +67,18 @@ calls = [];
 globalThis.fetch = (async (url: string) => { calls.push(String(url).includes('groq') ? 'groq' : 'openrouter'); return String(url).includes('groq') ? new Response('{}', { status: 500 }) : new Response(JSON.stringify({ choices: [{ message: { content: 'from fallback' } }] }), { status: 200 }); }) as typeof fetch;
 const r2 = await complete([{ role: 'user', content: 'x' }], { attempts: 2 });
 ok('LLM client falls back to OpenRouter when Groq keeps failing', r2.provider === 'openrouter', calls.join());
+
+// Gemini: tried first; with two keys, a rate-limited first key moves on to the second key.
+process.env.GEMINI_API_KEY = 'g1, g2';
+const auth: string[] = [];
+globalThis.fetch = (async (url: string, init?: RequestInit) => {
+  const key = String((init?.headers as Record<string, string>).Authorization).replace('Bearer ', '');
+  auth.push(String(url).includes('generativelanguage') ? key : 'other');
+  return key === 'g1' ? new Response('{}', { status: 429, headers: { 'retry-after': '0' } }) : new Response(JSON.stringify({ choices: [{ message: { content: 'from gemini' } }] }), { status: 200 });
+}) as typeof fetch;
+const r3 = await complete([{ role: 'user', content: 'x' }], { attempts: 1 });
+ok('Gemini is tried first and a rate-limited key falls over to the next key', r3.provider === 'gemini-2' && auth.join() === 'g1,g2', auth.join());
+delete process.env.GEMINI_API_KEY;
 globalThis.fetch = realFetch;
 }
 

@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import CiteText from './CiteText';
 
 interface Msg { role: 'user' | 'bot'; text: string; note?: string; mode?: string }
@@ -14,7 +14,7 @@ const IDEAS = [
   'Did sraheel or utariq click the phishing link?',
 ];
 
-export default function AskPanel() {
+export default function AskPanel({ initial, compact, onClose }: { initial?: string; compact?: boolean; onClose?: () => void } = {}) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
@@ -37,6 +37,28 @@ export default function AskPanel() {
       setBusy(false);
       setTimeout(() => end.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     }
+  }
+
+  const started = useRef(false);
+  useEffect(() => { if (initial && !started.current) { started.current = true; ask(initial); } // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (compact) {
+    return (
+      <div className="glass chat">
+        {onClose && <button className="chat-x" onClick={onClose} aria-label="Close answer">×</button>}
+        <div className="chat-q"><span className="chat-who">You asked</span>{initial}</div>
+        {busy && <div className="typing" role="status"><i /><i /><i /> Checking the logs…</div>}
+        {msgs.filter((m) => m.role === 'bot').map((m, i) => (
+          <div className="chat-a" key={i}>
+            <span className="chat-who">Answer from the logs</span>
+            <CiteText text={m.text} />
+            {m.note && <div className="small muted" style={{ marginTop: 8 }}>{m.note}</div>}
+            <div className="small muted chat-hint">The small grey tags are sources — click one to see the original log line.</div>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (

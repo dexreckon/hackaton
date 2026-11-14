@@ -1,11 +1,20 @@
-// Groq first, OpenRouter second. Retries 429 / 5xx with backoff, honours Retry-After, times out, never throws raw HTTP errors at the UI.
+// Gemini first (one or more keys, tried in turn), then Groq, then OpenRouter.
+// Retries 429 / 5xx with backoff, honours Retry-After, times out, never throws raw HTTP errors at the UI.
 export type Msg = { role: 'system' | 'user' | 'assistant'; content: string };
 
-interface Provider { name: string; url: string; key?: string; model: string; extra?: Record<string, string> }
+interface Provider { name: string; url: string; key?: string; model: string; extra?: Record<string, string>; params?: Record<string, unknown> }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// GEMINI_API_KEY may hold several keys separated by commas; when one hits its rate limit the next is used.
+const geminiKeys = () => (process.env.GEMINI_API_KEY ?? '').split(',').map((k) => k.trim()).filter(Boolean);
+
 function providers(): Provider[] {
+  const gm = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
   return [
+    // Gemini's OpenAI-compatible endpoint, so the request and response shape are the same as the others.
+    ...geminiKeys().map((key, i) => ({ name: geminiKeys().length > 1 ? `gemini-${i + 1}` : 'gemini', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', key, model: gm,
+      // Gemini 2.5 "thinks" by default and those hidden tokens count against max_tokens; this app wants short, direct answers.
+      params: { reasoning_effort: process.env.GEMINI_REASONING || 'none' } })),
     { name: 'groq', url: 'https://api.groq.com/openai/v1/chat/completions', key: process.env.GROQ_API_KEY, model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile' },
     { name: 'openrouter', url: 'https://openrouter.ai/api/v1/chat/completions', key: process.env.OPENROUTER_API_KEY, model: process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free', extra: { 'X-Title': 'Orbit triage' } },
   ];
@@ -23,7 +32,7 @@ export async function complete(messages: Msg[], opts: { maxTokens?: number; atte
         const res = await fetch(p.url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${p.key}`, ...p.extra },
-          body: JSON.stringify({ model: p.model, messages, temperature: 0.1, max_tokens: opts.maxTokens ?? 600 }),
+          body: JSON.stringify({ model: p.model, messages, temperature: 0.1, max_tokens: opts.maxTokens ?? 600, ...p.params }),
           signal: AbortSignal.timeout(opts.timeoutMs ?? 20000),
         });
         if (res.status === 429 || res.status >= 500) {

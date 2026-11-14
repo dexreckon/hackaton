@@ -13,6 +13,8 @@ Rules:
 - Never say data was "stolen" or "leaked". A large transfer is evidence of a transfer, not of which files were read.
 - Times: UTC first, PKT (UTC+5) in brackets if useful.
 - Recommend actions only if they are in CONTEXT as runbook steps, with the runbook step cited.
+- The reader may have no security background. Use plain, everyday words, and explain any technical term in a few words the first time (for example "VPN (the remote-access tunnel)").
+- Start with a one-sentence direct answer, then the supporting points.
 - Be short: at most 120 words.`;
 
 export function buildContext(ev: Evidence): string {
